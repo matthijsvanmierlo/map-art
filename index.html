@@ -621,9 +621,7 @@ async function generateMapData() {
               way(around:${radius},${lat},${lon})["waterway"~"riverbank|dock"];
               relation(around:${radius},${lat},${lon})["waterway"~"riverbank|dock"];
             );
-            out body;
-            >;
-            out skel qt;
+            out geom;
         `;
         const waterData = await fetchOverpass(waterQuery);
         state.data.water = osmtogeojson(waterData);
@@ -639,9 +637,7 @@ async function generateMapData() {
               way(around:${radius},${lat},${lon})["landuse"="grass"];
               relation(around:${radius},${lat},${lon})["landuse"="grass"];
             );
-            out body;
-            >;
-            out skel qt;
+            out geom;
         `;
         const parksData = await fetchOverpass(parksQuery);
         state.data.parks = osmtogeojson(parksData);
@@ -655,9 +651,7 @@ async function generateMapData() {
             (
               way(around:${radius},${lat},${lon})["highway"];
             );
-            out body;
-            >;
-            out skel qt;
+            out geom;
         `;
         const roadsData = await fetchOverpass(roadsQuery);
         state.data.roads = osmtogeojson(roadsData);
