@@ -710,19 +710,19 @@ function drawPlaceholder() {
     ctx.fillText("Map Preview", els.canvas.width/2, els.canvas.height/2);
 }
 
-// Mercator Projection Helper
+// Equirectangular Projection Helper (Aspect Ratio Corrected)
 function project(lat, lon, centerLat, centerLon, scale, width, height) {
-    const x = (lon - centerLon) * scale + width / 2;
-    // Latitude is non-linear (Mercator)
-    // y = ln(tan(pi/4 + lat/2))
-    const latRad = lat * Math.PI / 180;
+    // scale passed in is "pixels per degree longitude"
+    // To maintain 1:1 aspect ratio at the center latitude:
+    // pixels_per_deg_lat = pixels_per_deg_lon / cos(centerLat)
+    
     const centerLatRad = centerLat * Math.PI / 180;
+    const yFactor = 1 / Math.cos(centerLatRad);
     
-    // Web Mercator formula
-    const mercY = Math.log(Math.tan((Math.PI / 4) + (latRad / 2)));
-    const centerMercY = Math.log(Math.tan((Math.PI / 4) + (centerLatRad / 2)));
+    const x = (lon - centerLon) * scale + width / 2;
+    // Y is inverted (screen coordinates go down, latitude goes up)
+    const y = height / 2 - (lat - centerLat) * scale * yFactor;
     
-    const y = height / 2 - (mercY - centerMercY) * (180 / Math.PI) * scale; // Y is inverted on screen
     return { x, y };
 }
 
