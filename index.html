@@ -646,10 +646,16 @@ async function generateMapData() {
         els.loadingText.textContent = "Fetching Street Network...";
         els.progressBar.value = 75;
         // Optimization: Don't fetch nodes separately, use recurse down
+        // Adaptive Filtering: For larger areas, exclude minor paths to prevent timeouts
+        let highwaySelector = '["highway"]';
+        if (radius > 5000) {
+            highwaySelector = '["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|pedestrian)$"]';
+        }
+
         const roadsQuery = `
             [out:json][timeout:180];
             (
-              way(around:${radius},${lat},${lon})["highway"];
+              way(around:${radius},${lat},${lon})${highwaySelector};
             );
             out geom;
         `;
