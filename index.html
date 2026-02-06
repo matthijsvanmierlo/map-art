@@ -614,7 +614,7 @@ async function generateMapData() {
         els.loadingText.textContent = "Fetching Water Features...";
         els.progressBar.value = 20;
         const waterQuery = `
-            [out:json][timeout:90];
+            [out:json][timeout:180];
             (
               way(around:${radius},${lat},${lon})["natural"~"water|bay|strait"];
               relation(around:${radius},${lat},${lon})["natural"~"water|bay|strait"];
@@ -630,7 +630,7 @@ async function generateMapData() {
         els.loadingText.textContent = "Fetching Parks & Greenery...";
         els.progressBar.value = 50;
         const parksQuery = `
-            [out:json][timeout:90];
+            [out:json][timeout:180];
             (
               way(around:${radius},${lat},${lon})["leisure"="park"];
               relation(around:${radius},${lat},${lon})["leisure"="park"];
@@ -647,7 +647,7 @@ async function generateMapData() {
         els.progressBar.value = 75;
         // Optimization: Don't fetch nodes separately, use recurse down
         const roadsQuery = `
-            [out:json][timeout:90];
+            [out:json][timeout:180];
             (
               way(around:${radius},${lat},${lon})["highway"];
             );
@@ -722,7 +722,7 @@ function project(lat, lon, centerLat, centerLon, scale, width, height) {
     const mercY = Math.log(Math.tan((Math.PI / 4) + (latRad / 2)));
     const centerMercY = Math.log(Math.tan((Math.PI / 4) + (centerLatRad / 2)));
     
-    const y = height / 2 - (mercY - centerMercY) * scale; // Y is inverted on screen
+    const y = height / 2 - (mercY - centerMercY) * (180 / Math.PI) * scale; // Y is inverted on screen
     return { x, y };
 }
 
