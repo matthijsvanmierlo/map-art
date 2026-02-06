@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Art Generator</title>
+    
+    <!-- Bulma CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    
+    <!-- osmtogeojson -->
+    <script src="https://unpkg.com/osmtogeojson@3.0.0-beta.5/osmtogeojson.js"></script>
+
+    <style>
+        html, body {
+            height: 100%;
+            background-color: #f5f5f5;
+        }
+        
+        #app-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .main-content {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: row;
+        }
+
+        #sidebar {
+            width: 350px;
+            background: white;
+            overflow-y: auto;
+            border-right: 1px solid #dbdbdb;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            z-index: 10;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+        }
+
+        #preview-area {
+            flex: 1;
+            background-color: #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: auto;
+            padding: 2rem;
+        }
+
+        #canvas-wrapper {
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            background: white;
+            line-height: 0;
+            transition: transform 0.2s ease;
+        }
+
+        canvas {
+            max-width: 100%;
+            max-height: 90vh;
+            height: auto;
+            object-fit: contain;
+        }
+
+        .color-input-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .color-input-group label {
+            flex: 1;
+            font-size: 0.9rem;
+            margin-bottom: 0;
+        }
+
+        input[type="color"] {
+            border: none;
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            cursor: pointer;
+            background: none;
+        }
+
+        .loader-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            backdrop-filter: blur(2px);
+        }
+
+        /* Custom Scrollbar for Sidebar */
+        #sidebar::-webkit-scrollbar {
+            width: 8px;
+        }
+        #sidebar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        #sidebar::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+        #sidebar::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        .is-xs {
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <nav class="navbar is-dark" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+            <a class="navbar-item" href="#">
+                <span class="icon is-medium mr-2"><i class="fas fa-map"></i></span>
+                <span class="is-size-5 has-text-weight-bold">Map Art</span>
+            </a>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <!-- Sidebar Controls -->
+        <aside id="sidebar">
+            
+            <!-- Location Section -->
+            <div class="box">
+                <h3 class="title is-6 mb-3"><i class="fas fa-search-location mr-2"></i>Location</h3>
+                <div class="field has-addons">
+                    <div class="control is-expanded">
+                        <input class="input" type="text" id="location-input" placeholder="City, Country" value="Amsterdam, Netherlands">
+                    </div>
+                    <div class="control">
+                        <button class="button is-info" id="search-btn">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="field is-grouped is-grouped-multiline">
+                    <div class="control is-expanded">
+                        <label class="label is-small">Latitude</label>
+                        <input class="input is-small" type="number" step="any" id="lat-input">
+                    </div>
+                    <div class="control is-expanded">
+                        <label class="label is-small">Longitude</label>
+                        <input class="input is-small" type="number" step="any" id="lon-input">
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label is-small">Radius (meters): <span id="radius-val">6000</span></label>
+                    <input class="slider is-fullwidth" type="range" min="1000" max="20000" step="500" value="6000" id="radius-input">
+                    <p class="help">
+                        <span class="tag is-light">Small: 4k</span>
+                        <span class="tag is-light">Medium: 10k</span>
+                        <span class="tag is-light">Large: 15k+</span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Theme Section -->
+            <div class="box">
+                <h3 class="title is-6 mb-3"><i class="fas fa-palette mr-2"></i>Theme & Style</h3>
+                <div class="field">
+                    <label class="label is-small">Preset Theme</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select id="theme-select">
+                                <!-- Populated by JS -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="custom-colors" class="mt-4">
+                    <div class="color-input-group">
+                        <input type="color" id="color-bg">
+                        <label>Background</label>
+                    </div>
+                    <div class="color-input-group">
+                        <input type="color" id="color-water">
+                        <label>Water</label>
+                    </div>
+                    <div class="color-input-group">
+                        <input type="color" id="color-parks">
+                        <label>Parks</label>
+                    </div>
+                    <div class="color-input-group">
+                        <input type="color" id="color-roads-major">
+                        <label>Major Roads</label>
+                    </div>
+                    <div class="color-input-group">
+                        <input type="color" id="color-roads-minor">
+                        <label>Minor Roads</label>
+                    </div>
+                    <div class="color-input-group">
+                        <input type="color" id="color-text">
+                        <label>Text</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Text & Layout -->
+            <div class="box">
+                <h3 class="title is-6 mb-3"><i class="fas fa-font mr-2"></i>Labels</h3>
+                <div class="field">
+                    <label class="label is-small">City Name</label>
+                    <input class="input is-small" type="text" id="label-city">
+                </div>
+                <div class="field">
+                    <label class="label is-small">Country / Subtitle</label>
+                    <input class="input is-small" type="text" id="label-country">
+                </div>
+                <div class="field">
+                    <label class="checkbox is-small">
+                        <input type="checkbox" id="show-coords" checked>
+                        Show Coordinates
+                    </label>
+                </div>
+                <div class="field">
+                    <label class="checkbox is-small">
+                        <input type="checkbox" id="show-gradient" checked>
+                        Fade Gradient
+                    </label>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="mt-auto">
+                <button class="button is-primary is-fullwidth is-large mb-3" id="generate-btn">
+                    <span class="icon"><i class="fas fa-sync-alt"></i></span>
+                    <span>Generate Map</span>
+                </button>
+                <button class="button is-success is-outlined is-fullwidth" id="download-btn">
+                    <span class="icon"><i class="fas fa-download"></i></span>
+                    <span>Download Poster</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Preview Area -->
+        <main id="preview-area">
+            <div id="loading-indicator" class="loader-overlay is-hidden">
+                <div class="loader is-loading is-size-1 mb-4" style="height: 3em; width: 3em; border-width: 4px;"></div>
+                <p class="subtitle is-5 has-text-dark has-text-weight-bold" id="loading-text">Fetching data...</p>
+                <progress class="progress is-primary is-small" value="0" max="100" style="width: 300px;" id="progress-bar">15%</progress>
+            </div>
+
+            <div id="canvas-wrapper">
+                <canvas id="poster-canvas"></canvas>
+            </div>
+        </main>
+    </div>
+</div>
+
+<script>
+/**
+ * THEMES CONFIGURATION
+ * Replicated from the Python script's JSON files.
+ */
+const THEMES = {
+    terracotta: {
+        name: "Terracotta",
+        bg: "#F5EDE4",
+        text: "#8B4513",
+        gradient_color: "#F5EDE4",
+        water: "#A8C4C4",
+        parks: "#E8E0D0",
+        road_motorway: "#A0522D",
+        road_primary: "#B8653A",
+        road_secondary: "#C9846A",
+        road_tertiary: "#D9A08A",
+        road_residential: "#E5C4B0",
+        road_default: "#D9A08A"
+    },
+    noir: {
+        name: "Noir",
+        bg: "#1A1A1A",
+        text: "#E0E0E0",
+        gradient_color: "#1A1A1A",
+        water: "#000000",
+        parks: "#262626",
+        road_motorway: "#808080",
+        road_primary: "#666666",
+        road_secondary: "#4D4D4D",
+        road_tertiary: "#404040",
+        road_residential: "#333333",
+        road_default: "#333333"
+    },
+    blueprint: {
+        name: "Blueprint",
+        bg: "#003366",
+        text: "#FFFFFF",
+        gradient_color: "#003366",
+        water: "#004080",
+        parks: "#002b55",
+        road_motorway: "#FFFFFF",
+        road_primary: "#E6F2FF",
+        road_secondary: "#CCE5FF",
+        road_tertiary: "#B3D7FF",
+        road_residential: "#336699",
+        road_default: "#336699"
+    },
+    ocean: {
+        name: "Ocean",
+        bg: "#F0F8FF",
+        text: "#006994",
+        gradient_color: "#F0F8FF",
+        water: "#B0E0E6",
+        parks: "#E0F0E0",
+        road_motorway: "#4682B4",
+        road_primary: "#5F9EA0",
+        road_secondary: "#87CEEB",
+        road_tertiary: "#ADD8E6",
+        road_residential: "#D3D3D3",
+        road_default: "#D3D3D3"
+    },
+    contrast_zones: {
+        name: "Contrast Zones",
+        bg: "#FFFFFF",
+        text: "#000000",
+        gradient_color: "#FFFFFF",
+        water: "#111111",
+        parks: "#CCCCCC",
+        road_motorway: "#000000",
+        road_primary: "#222222",
+        road_secondary: "#444444",
+        road_tertiary: "#666666",
+        road_residential: "#999999",
+        road_default: "#999999"
+    },
+    warm_beige: {
+        name: "Warm Beige",
+        bg: "#F5F5DC",
+        text: "#4B3621",
+        gradient_color: "#F5F5DC",
+        water: "#A0B6CD",
+        parks: "#C8D6C6",
+        road_motorway: "#8B4513",
+        road_primary: "#CD853F",
+        road_secondary: "#DEB887",
+        road_tertiary: "#E3C8A8",
+        road_residential: "#EEE8AA",
+        road_default: "#E3C8A8"
+    },
+    pastel_dream: {
+        name: "Pastel Dream",
+        bg: "#FFF0F5",
+        text: "#708090",
+        gradient_color: "#FFF0F5",
+        water: "#E6E6FA",
+        parks: "#F0FFF0",
+        road_motorway: "#FFB6C1",
+        road_primary: "#FFC0CB",
+        road_secondary: "#FFDAB9",
+        road_tertiary: "#FFE4E1",
+        road_residential: "#FFF5EE",
+        road_default: "#FFE4E1"
+    },
+    midnight_blue: {
+        name: "Midnight Blue",
+        bg: "#191970",
+        text: "#FFD700",
+        gradient_color: "#191970",
+        water: "#000080",
+        parks: "#2F4F4F",
+        road_motorway: "#FFD700",
+        road_primary: "#FFA500",
+        road_secondary: "#FF8C00",
+        road_tertiary: "#DAA520",
+        road_residential: "#483D8B",
+        road_default: "#DAA520"
+    }
+};
+
+/**
+ * APP STATE
+ */
+const state = {
+    lat: 52.3676,
+    lon: 4.9041,
+    city: "Amsterdam",
+    country: "Netherlands",
+    radius: 6000,
+    theme: THEMES.terracotta,
+    data: {
+        roads: null,
+        water: null,
+        parks: null
+    },
+    posterSize: { width: 1200, height: 1600 }, // Scaled down for canvas pixels (300dpi approximation would be huge, we use screen res for preview, upscale for export)
+    isGenerating: false
+};
+
+// DOM Elements
+const els = {
+    locationInput: document.getElementById('location-input'),
+    searchBtn: document.getElementById('search-btn'),
+    latInput: document.getElementById('lat-input'),
+    lonInput: document.getElementById('lon-input'),
+    radiusInput: document.getElementById('radius-input'),
+    radiusVal: document.getElementById('radius-val'),
+    themeSelect: document.getElementById('theme-select'),
+    
+    // Colors
+    colorBg: document.getElementById('color-bg'),
+    colorWater: document.getElementById('color-water'),
+    colorParks: document.getElementById('color-parks'),
+    colorRoadsMajor: document.getElementById('color-roads-major'),
+    colorRoadsMinor: document.getElementById('color-roads-minor'),
+    colorText: document.getElementById('color-text'),
+
+    // Text
+    labelCity: document.getElementById('label-city'),
+    labelCountry: document.getElementById('label-country'),
+    showCoords: document.getElementById('show-coords'),
+    showGradient: document.getElementById('show-gradient'),
+
+    // Action
+    generateBtn: document.getElementById('generate-btn'),
+    downloadBtn: document.getElementById('download-btn'),
+    
+    // Preview
+    canvas: document.getElementById('poster-canvas'),
+    loading: document.getElementById('loading-indicator'),
+    loadingText: document.getElementById('loading-text'),
+    progressBar: document.getElementById('progress-bar')
+};
+
+// Canvas Context
+const ctx = els.canvas.getContext('2d');
+
+/**
+ * INITIALIZATION
+ */
+function init() {
+    // Populate Themes
+    Object.keys(THEMES).forEach(key => {
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = THEMES[key].name;
+        els.themeSelect.appendChild(option);
+    });
+
+    // Event Listeners
+    els.searchBtn.addEventListener('click', handleSearch);
+    els.locationInput.addEventListener('keydown', (e) => e.key === 'Enter' && handleSearch());
+    
+    els.radiusInput.addEventListener('input', (e) => {
+        els.radiusVal.textContent = e.target.value;
+        state.radius = parseInt(e.target.value);
+    });
+
+    els.themeSelect.addEventListener('change', (e) => {
+        const t = THEMES[e.target.value];
+        if (t) {
+            applyThemeToInputs(t);
+            // Auto-regenerate render (not data) if possible
+            if (state.data.roads) renderPoster(); 
+        }
+    });
+
+    // Color Pickers - Update state and re-render immediately
+    const colorInputs = [els.colorBg, els.colorWater, els.colorParks, els.colorRoadsMajor, els.colorRoadsMinor, els.colorText];
+    colorInputs.forEach(input => {
+        input.addEventListener('input', () => {
+            updateStateFromInputs();
+            if (state.data.roads) renderPoster();
+        });
+    });
+
+    // Text inputs - re-render
+    [els.labelCity, els.labelCountry, els.showCoords, els.showGradient].forEach(el => {
+        el.addEventListener('input', () => {
+            if (state.data.roads) renderPoster();
+        });
+    });
+
+    els.generateBtn.addEventListener('click', generateMapData);
+    els.downloadBtn.addEventListener('click', downloadPoster);
+
+    // Initial State Set
+    applyThemeToInputs(state.theme);
+    els.latInput.value = state.lat;
+    els.lonInput.value = state.lon;
+    els.labelCity.value = state.city;
+    els.labelCountry.value = state.country;
+
+    // Initial render (blank or placeholder)
+    resizeCanvas();
+    drawPlaceholder();
+}
+
+function applyThemeToInputs(theme) {
+    els.colorBg.value = theme.bg;
+    els.colorWater.value = theme.water;
+    els.colorParks.value = theme.parks;
+    els.colorRoadsMajor.value = theme.road_motorway; // approximate mapping
+    els.colorRoadsMinor.value = theme.road_residential;
+    els.colorText.value = theme.text;
+}
+
+function updateStateFromInputs() {
+    state.theme = {
+        ...state.theme,
+        bg: els.colorBg.value,
+        water: els.colorWater.value,
+        parks: els.colorParks.value,
+        road_motorway: els.colorRoadsMajor.value,
+        road_primary: els.colorRoadsMajor.value,
+        road_secondary: els.colorRoadsMajor.value,
+        road_tertiary: els.colorRoadsMinor.value,
+        road_residential: els.colorRoadsMinor.value,
+        road_default: els.colorRoadsMinor.value,
+        text: els.colorText.value,
+        gradient_color: els.colorBg.value
+    };
+}
+
+/**
+ * GEOCODING
+ */
+async function handleSearch() {
+    const query = els.locationInput.value;
+    if (!query) return;
+
+    els.searchBtn.classList.add('is-loading');
+    
+    try {
+        // Note: Browser fetch cannot set User-Agent (it's a forbidden header). 
+        // We rely on the browser's default UA.
+        const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+        
+        if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+        
+        const data = await resp.json();
+        
+        if (data && data.length > 0) {
+            const loc = data[0];
+            state.lat = parseFloat(loc.lat);
+            state.lon = parseFloat(loc.lon);
+            els.latInput.value = state.lat;
+            els.lonInput.value = state.lon;
+            
+            // Try to extract nice names
+            const parts = loc.display_name.split(', ');
+            state.city = parts[0];
+            state.country = parts[parts.length - 1];
+            
+            els.labelCity.value = state.city;
+            els.labelCountry.value = state.country;
+        } else {
+            alert('Location not found');
+        }
+    } catch (e) {
+        console.error(e);
+        if (window.location.protocol === 'file:') {
+            alert("Security Error: Browsers block API requests from local files (CORS).\n\nPlease run a local server to use this app:\n1. Open terminal in this folder\n2. Run: python3 -m http.server\n3. Go to: http://localhost:8000");
+        } else {
+            alert('Geocoding failed. Please check your connection or try manual coordinates.');
+        }
+    } finally {
+        els.searchBtn.classList.remove('is-loading');
+    }
+}
+
+/**
+ * DATA FETCHING (Overpass API)
+ */
+async function generateMapData() {
+    if (state.isGenerating) return;
+    state.isGenerating = true;
+    
+    // Show Loading
+    els.loading.classList.remove('is-hidden');
+    els.loadingText.textContent = "Initializing...";
+    els.progressBar.value = 5;
+
+    // Update state from manual lat/lon inputs
+    state.lat = parseFloat(els.latInput.value);
+    state.lon = parseFloat(els.lonInput.value);
+
+    const radius = state.radius;
+    const lat = state.lat;
+    const lon = state.lon;
+
+    // Overpass QL
+    // We fetch in 3 chunks to avoid timeouts and monitor progress
+    try {
+        // 1. Water
+        els.loadingText.textContent = "Fetching Water Features...";
+        els.progressBar.value = 20;
+        const waterQuery = `
+            [out:json][timeout:25];
+            (
+              way(around:${radius},${lat},${lon})["natural"~"water|bay|strait"];
+              relation(around:${radius},${lat},${lon})["natural"~"water|bay|strait"];
+              way(around:${radius},${lat},${lon})["waterway"~"riverbank|dock"];
+              relation(around:${radius},${lat},${lon})["waterway"~"riverbank|dock"];
+            );
+            out body;
+            >;
+            out skel qt;
+        `;
+        const waterData = await fetchOverpass(waterQuery);
+        state.data.water = osmtogeojson(waterData);
+
+        // 2. Parks
+        els.loadingText.textContent = "Fetching Parks & Greenery...";
+        els.progressBar.value = 50;
+        const parksQuery = `
+            [out:json][timeout:25];
+            (
+              way(around:${radius},${lat},${lon})["leisure"="park"];
+              relation(around:${radius},${lat},${lon})["leisure"="park"];
+              way(around:${radius},${lat},${lon})["landuse"="grass"];
+              relation(around:${radius},${lat},${lon})["landuse"="grass"];
+            );
+            out body;
+            >;
+            out skel qt;
+        `;
+        const parksData = await fetchOverpass(parksQuery);
+        state.data.parks = osmtogeojson(parksData);
+
+        // 3. Roads
+        els.loadingText.textContent = "Fetching Street Network...";
+        els.progressBar.value = 75;
+        // Optimization: Don't fetch nodes separately, use recurse down
+        const roadsQuery = `
+            [out:json][timeout:25];
+            (
+              way(around:${radius},${lat},${lon})["highway"];
+            );
+            out body;
+            >;
+            out skel qt;
+        `;
+        const roadsData = await fetchOverpass(roadsQuery);
+        state.data.roads = osmtogeojson(roadsData);
+
+        els.loadingText.textContent = "Rendering...";
+        els.progressBar.value = 90;
+
+        // Give UI a moment to breathe before heavy rendering
+        setTimeout(() => {
+            updateStateFromInputs(); // Ensure colors are fresh
+            renderPoster();
+            els.loading.classList.add('is-hidden');
+            state.isGenerating = false;
+        }, 100);
+
+    } catch (e) {
+        console.error(e);
+        alert(`Error fetching map data: ${e.message}`);
+        els.loading.classList.add('is-hidden');
+        state.isGenerating = false;
+    }
+}
+
+async function fetchOverpass(query) {
+    const resp = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: query
+    });
+    if (!resp.ok) throw new Error(resp.statusText);
+    return await resp.json();
+}
+
+/**
+ * RENDERING LOGIC
+ */
+function resizeCanvas() {
+    // Set internal resolution high for quality
+    els.canvas.width = state.posterSize.width;
+    els.canvas.height = state.posterSize.height;
+}
+
+function drawPlaceholder() {
+    ctx.fillStyle = "#f0f0f0";
+    ctx.fillRect(0, 0, els.canvas.width, els.canvas.height);
+    ctx.fillStyle = "#ccc";
+    ctx.font = "30px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Map Preview", els.canvas.width/2, els.canvas.height/2);
+}
+
+// Mercator Projection Helper
+function project(lat, lon, centerLat, centerLon, scale, width, height) {
+    const x = (lon - centerLon) * scale + width / 2;
+    // Latitude is non-linear (Mercator)
+    // y = ln(tan(pi/4 + lat/2))
+    const latRad = lat * Math.PI / 180;
+    const centerLatRad = centerLat * Math.PI / 180;
+    
+    // Web Mercator formula
+    const mercY = Math.log(Math.tan((Math.PI / 4) + (latRad / 2)));
+    const centerMercY = Math.log(Math.tan((Math.PI / 4) + (centerLatRad / 2)));
+    
+    const y = height / 2 - (mercY - centerMercY) * scale; // Y is inverted on screen
+    return { x, y };
+}
+
+function renderPoster() {
+    resizeCanvas();
+    const w = els.canvas.width;
+    const h = els.canvas.height;
+    
+    // 1. Background
+    ctx.fillStyle = state.theme.bg;
+    ctx.fillRect(0, 0, w, h);
+
+    // Calculate Scale
+    // We want the radius (in meters) to fit half the width/height
+    // 1 degree lat ~ 111,000 meters
+    // Scale needs to convert degrees to pixels
+    // Simplification: At the center latitude, 1 deg lon = 111000 * cos(lat) meters
+    const metersPerDegLat = 111320;
+    const metersPerDegLon = 111320 * Math.cos(state.lat * Math.PI / 180);
+    
+    // We want 'state.radius' meters to cover approx 40% of the canvas width
+    // pixels = (meters / metersPerDeg) * scale
+    // scale = pixels * metersPerDeg / meters
+    const scale = (w * 0.45) * metersPerDegLon / state.radius; 
+
+    // Helper for GeoJSON rendering
+    const drawFeature = (feature, fill, stroke, width) => {
+        if (!feature.geometry) return;
+        
+        ctx.beginPath();
+        const type = feature.geometry.type;
+        const coords = feature.geometry.coordinates;
+
+        const drawRing = (ring) => {
+            ring.forEach((p, i) => {
+                const proj = project(p[1], p[0], state.lat, state.lon, scale, w, h);
+                if (i === 0) ctx.moveTo(proj.x, proj.y);
+                else ctx.lineTo(proj.x, proj.y);
+            });
+        };
+
+        if (type === 'Polygon') {
+            coords.forEach(ring => drawRing(ring));
+            ctx.closePath();
+        } else if (type === 'MultiPolygon') {
+            coords.forEach(poly => {
+                poly.forEach(ring => drawRing(ring));
+                ctx.closePath();
+            });
+        } else if (type === 'LineString') {
+            drawRing(coords);
+        } else if (type === 'MultiLineString') {
+            coords.forEach(line => drawRing(line));
+        }
+
+        if (fill) {
+            ctx.fillStyle = fill;
+            ctx.fill();
+        }
+        if (stroke) {
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = width || 1;
+            ctx.stroke();
+        }
+    };
+
+    // 2. Water
+    if (state.data.water) {
+        state.data.water.features.forEach(f => {
+            drawFeature(f, state.theme.water, null, 0);
+        });
+    }
+
+    // 3. Parks
+    if (state.data.parks) {
+        state.data.parks.features.forEach(f => {
+            drawFeature(f, state.theme.parks, null, 0);
+        });
+    }
+
+    // 4. Roads
+    if (state.data.roads) {
+        // Sort roads: minor first, major last (so bridges/highways are on top)
+        // Simplified hierarchy
+        const hierarchy = {
+            'motorway': 5, 'motorway_link': 5,
+            'trunk': 4, 'trunk_link': 4,
+            'primary': 4, 'primary_link': 4,
+            'secondary': 3, 'secondary_link': 3,
+            'tertiary': 2, 'tertiary_link': 2,
+            'residential': 1, 'unclassified': 1,
+            'service': 0, 'living_street': 0, 'footway': 0, 'path': 0
+        };
+
+        const getRank = (f) => hierarchy[f.properties.highway] || 0;
+        
+        const sortedRoads = state.data.roads.features.sort((a, b) => getRank(a) - getRank(b));
+
+        sortedRoads.forEach(f => {
+            const hw = f.properties.highway;
+            let color = state.theme.road_default;
+            let width = 1;
+
+            if (['motorway', 'motorway_link', 'trunk', 'primary'].includes(hw)) {
+                color = state.theme.road_motorway;
+                width = 3;
+            } else if (['secondary', 'tertiary'].includes(hw)) {
+                color = state.theme.road_tertiary; // Maps to minor in UI config simplified
+                width = 2;
+            } else {
+                color = state.theme.road_residential;
+                width = 1;
+            }
+
+            // High dpi adjustment
+            drawFeature(f, null, color, width * 1.5); 
+        });
+    }
+
+    // 5. Gradients (Fade)
+    if (els.showGradient.checked) {
+        // Bottom fade
+        const gradB = ctx.createLinearGradient(0, h * 0.75, 0, h);
+        const c = state.theme.gradient_color; // e.g. #F5EDE4
+        // We need to convert hex to rgba for transparency
+        // Simple hex parser:
+        const hexToRgb = (hex) => {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return `${r},${g},${b}`;
+        };
+        const rgb = hexToRgb(c);
+        
+        gradB.addColorStop(0, `rgba(${rgb}, 0)`);
+        gradB.addColorStop(1, `rgba(${rgb}, 1)`);
+        
+        ctx.fillStyle = gradB;
+        ctx.fillRect(0, h * 0.75, w, h * 0.25);
+
+        // Top fade
+        const gradT = ctx.createLinearGradient(0, h * 0.25, 0, 0);
+        gradT.addColorStop(0, `rgba(${rgb}, 0)`);
+        gradT.addColorStop(1, `rgba(${rgb}, 1)`);
+        ctx.fillStyle = gradT;
+        ctx.fillRect(0, 0, w, h * 0.25);
+    }
+
+    // 6. Text Labels
+    const city = els.labelCity.value.toUpperCase().split('').join('  ');
+    const country = els.labelCountry.value.toUpperCase();
+    
+    ctx.textAlign = "center";
+    ctx.fillStyle = state.theme.text;
+
+    // City
+    ctx.font = "bold 80px 'Roboto', sans-serif"; // Scale this?
+    // Dynamic sizing like python script
+    if (city.length > 15) ctx.font = "bold 60px 'Roboto', sans-serif";
+    ctx.fillText(city, w / 2, h * 0.85);
+
+    // Country
+    ctx.font = "30px 'Roboto', monospace";
+    ctx.fillText(country, w / 2, h * 0.89);
+
+    // Coords
+    if (els.showCoords.checked) {
+        const latStr = state.lat.toFixed(4) + "° " + (state.lat >= 0 ? "N" : "S");
+        const lonStr = state.lon.toFixed(4) + "° " + (state.lon >= 0 ? "E" : "W");
+        ctx.font = "20px monospace";
+        ctx.globalAlpha = 0.7;
+        ctx.fillText(`${latStr} / ${lonStr}`, w / 2, h * 0.92);
+        ctx.globalAlpha = 1.0;
+        
+        // Decorative line
+        ctx.beginPath();
+        ctx.moveTo(w * 0.45, h * 0.94);
+        ctx.lineTo(w * 0.55, h * 0.94);
+        ctx.strokeStyle = state.theme.text;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+}
+
+function downloadPoster() {
+    const link = document.createElement('a');
+    link.download = `${els.labelCity.value}_${els.labelCountry.value}_poster.png`;
+    link.href = els.canvas.toDataURL('image/png', 1.0);
+    link.click();
+}
+
+// Start
+init();
+
+</script>
+</body>
+</html>
