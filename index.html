@@ -607,6 +607,22 @@ async function generateMapData() {
     const lat = state.lat;
     const lon = state.lon;
 
+    // CALCULATE BOUNDING BOX (Faster than radial search)
+    // 1 deg lat ~ 111132m
+    // 1 deg lon ~ 111320m * cos(lat)
+    // We add a small buffer (1.1x) to ensure corners are covered
+    const R_EARTH = 6378137; 
+    const dLat = (radius / R_EARTH) * (180 / Math.PI) * 1.1;
+    const dLon = (radius / R_EARTH) * (180 / Math.PI) / Math.cos(lat * Math.PI / 180) * 1.1;
+
+    const s = lat - dLat;
+    const n = lat + dLat;
+    const w = lon - dLon;
+    const e = lon + dLon;
+
+    // Global settings for all queries
+    const bboxSettings = `[out:json][timeout:25][bbox:${s},${w},${n},${e}];`;
+
     // Overpass QL
     // We fetch in 3 chunks to avoid timeouts and monitor progress
     try {
@@ -614,12 +630,12 @@ async function generateMapData() {
         els.loadingText.textContent = "Fetching Water Features...";
         els.progressBar.value = 20;
         const waterQuery = `
-            [out:json][timeout:180];
+            ${bboxSettings}
             (
-              way(around:${radius},${lat},${lon})["natural"~"water|bay|strait"];
-              relation(around:${radius},${lat},${lon})["natural"~"water|bay|strait"];
-              way(around:${radius},${lat},${lon})["waterway"~"riverbank|dock"];
-              relation(around:${radius},${lat},${lon})["waterway"~"riverbank|dock"];
+              way["natural"~"water|bay|strait"];
+              relation["natural"~"water|bay|strait"];
+              way["waterway"~"riverbank|dock"];
+              relation["waterway"~"riverbank|dock"];
             );
             out geom;
         `;
@@ -630,12 +646,12 @@ async function generateMapData() {
         els.loadingText.textContent = "Fetching Parks & Greenery...";
         els.progressBar.value = 50;
         const parksQuery = `
-            [out:json][timeout:180];
+            ${bboxSettings}
             (
-              way(around:${radius},${lat},${lon})["leisure"="park"];
-              relation(around:${radius},${lat},${lon})["leisure"="park"];
-              way(around:${radius},${lat},${lon})["landuse"="grass"];
-              relation(around:${radius},${lat},${lon})["landuse"="grass"];
+              way["leisure"="park"];
+              relation["leisure"="park"];
+              way["landuse"="grass"];
+              relation["landuse"="grass"];
             );
             out geom;
         `;
@@ -645,7 +661,7 @@ async function generateMapData() {
         // 3. Roads
         els.loadingText.textContent = "Fetching Street Network...";
         els.progressBar.value = 75;
-        // Optimization: Don't fetch nodes separately, use recurse down
+        
         // Adaptive Filtering: For larger areas, exclude minor paths to prevent timeouts
         let highwaySelector = '["highway"]';
         if (radius > 5000) {
@@ -653,9 +669,9 @@ async function generateMapData() {
         }
 
         const roadsQuery = `
-            [out:json][timeout:180];
+            ${bboxSettings}
             (
-              way(around:${radius},${lat},${lon})${highwaySelector};
+              way${highwaySelector};
             );
             out geom;
         `;
